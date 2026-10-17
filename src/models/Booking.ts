@@ -13,6 +13,8 @@ export interface IBooking {
   totalPrice: number;
   status: BookingStatus;
   paymentStatus: PaymentStatus;
+  stripeSessionId?: string;
+  stripePaymentIntentId?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -62,6 +64,12 @@ const bookingSchema = new Schema<IBooking>(
         message: '{VALUE} is not a valid payment status',
       },
       default: 'UNPAID',
+    },
+    stripeSessionId: {
+      type: String,
+    },
+    stripePaymentIntentId: {
+      type: String,
     },
   },
   {

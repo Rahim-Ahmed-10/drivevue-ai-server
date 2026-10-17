@@ -4,6 +4,7 @@ import authRoutes from './routes/authRoutes';
 import carRoutes from './routes/carRoutes';
 import bookingRoutes from './routes/bookingRoutes';
 import aiRoutes from './routes/aiRoutes';
+import paymentRoutes from './routes/paymentRoutes';
 import { notFound, errorHandler } from './middlewares/errorMiddleware';
 
 const app: Application = express();
@@ -38,6 +39,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/cars', carRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/payments', paymentRoutes);
 
 // Error Handling Middlewares
 app.use(notFound);

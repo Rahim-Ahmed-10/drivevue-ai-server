@@ -1,0 +1,58 @@
+### ==============================================================================
+### DriveVue AI - Stripe Payment Gateway API Tests
+### ==============================================================================
+
+@baseUrl = http://localhost:5000/api
+@contentType = application/json
+
+### ------------------------------------------------------------------------------
+### STEP 1: Authentication (Login to get User Token)
+### ------------------------------------------------------------------------------
+# @name userLogin
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "rahim@example.com",
+  "password": "123456password"
+}
+
+### Extracted User Token
+@userToken = {{userLogin.response.body.token}}
+
+### ------------------------------------------------------------------------------
+### STEP 2: Fetch User's Pending Bookings
+### ------------------------------------------------------------------------------
+# @name getMyBookings
+GET {{baseUrl}}/bookings/my-bookings
+Authorization: Bearer {{userToken}}
+
+### Capture the first pending booking ID
+@bookingId = {{getMyBookings.response.body.data[0]._id}}
+
+### ==============================================================================
+### STEP 3: Create Stripe Checkout Session
+### ==============================================================================
+# @name createCheckoutSession
+POST {{baseUrl}}/payments/create-checkout-session
+Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
+
+{
+  "bookingId": "{{bookingId}}"
+}
+
+### Capture created Stripe Checkout Session ID
+@sessionId = {{createCheckoutSession.response.body.sessionId}}
+
+### ==============================================================================
+### STEP 4: Verify Payment (After Stripe Checkout Success)
+### ==============================================================================
+POST {{baseUrl}}/payments/verify-payment
+Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
+
+{
+  "sessionId": "{{sessionId}}",
+  "bookingId": "{{bookingId}}"
+}

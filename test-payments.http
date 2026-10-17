@@ -1,0 +1,105 @@
+### ==============================================================================
+### DriveVue AI - Stripe Payment Gateway Checkout API Tests
+### ==============================================================================
+### Run each step sequentially using the VS Code REST Client extension
+### Server URL: http://localhost:5000
+### ==============================================================================
+
+@baseUrl = http://localhost:5000/api
+@contentType = application/json
+
+### ==============================================================================
+### STEP 1: Auth Login (Dynamically populates @userToken)
+### ==============================================================================
+# @name userLogin
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "rahim@example.com",
+  "password": "123456password"
+}
+
+### Extracted Auth Token from Login Response
+@userToken = {{userLogin.response.body.token}}
+
+### ==============================================================================
+### STEP 2: Fetch User's Pending Bookings (Dynamically populates @bookingId)
+### ==============================================================================
+# @name getMyBookings
+GET {{baseUrl}}/bookings/my-bookings
+Authorization: Bearer {{userToken}}
+
+### Extracted Booking ID from user's booking list
+@bookingId = {{getMyBookings.response.body.data[0]._id}}
+
+### ==============================================================================
+### OPTIONAL STEP 2B: Create a New Booking (Run if no pending bookings exist)
+### ==============================================================================
+# @name createBooking
+POST {{baseUrl}}/bookings
+Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
+
+{
+  "car": "6ad3d9391803abf824b67ff0",
+  "startDate": "2026-12-15",
+  "endDate": "2026-12-18"
+}
+
+### ==============================================================================
+### STEP 3: Create Stripe Checkout Session
+### ==============================================================================
+# @name createCheckoutSession
+POST {{baseUrl}}/payments/create-checkout-session
+Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
+
+{
+  "bookingId": "{{bookingId}}"
+}
+
+### Extracted Stripe Checkout Session ID from checkout response
+@sessionId = {{createCheckoutSession.response.body.sessionId}}
+
+### ==============================================================================
+### STEP 4: Verify Payment (After checkout redirect or simulation)
+### ==============================================================================
+POST {{baseUrl}}/payments/verify-payment
+Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
+
+{
+  "sessionId": "{{sessionId}}",
+  "bookingId": "{{bookingId}}",
+  "simulatePayment": true
+}
+
+### ==============================================================================
+### STEP 5: Check Booking Details (Confirmed & Paid)
+### ==============================================================================
+GET {{baseUrl}}/bookings/my-bookings
+Authorization: Bearer {{userToken}}
+
+### ==============================================================================
+### STEP 6: Validation Error Tests
+### ==============================================================================
+
+### 6.1 Missing bookingId -> Expected: 400 Bad Request
+POST {{baseUrl}}/payments/create-checkout-session
+Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
+
+{
+}
+
+###
+
+### 6.2 Invalid bookingId format -> Expected: 400 Bad Request
+POST {{baseUrl}}/payments/create-checkout-session
+Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
+
+{
+  "bookingId": "invalid-mongo-id"
+}
