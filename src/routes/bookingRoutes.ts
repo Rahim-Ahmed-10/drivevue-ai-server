@@ -1,12 +1,20 @@
 import { Router } from 'express';
-import { createBooking, getMyBookings } from '../controllers/bookingController';
-import { protect } from '../middlewares/authMiddleware';
+import {
+  createBooking,
+  getMyBookings,
+  cancelBooking,
+  getAllBookings,
+} from '../controllers/bookingController';
+import { verifyToken, authorizeRoles } from '../middlewares/authMiddleware';
 
 const router = Router();
 
-router.use(protect); // all booking routes require authentication
+// Protected user routes (any authenticated user)
+router.post('/', verifyToken, createBooking);
+router.get('/my-bookings', verifyToken, getMyBookings);
+router.patch('/cancel/:id', verifyToken, cancelBooking);
 
-router.post('/', createBooking);
-router.get('/my-bookings', getMyBookings);
+// Protected admin route (admin only)
+router.get('/', verifyToken, authorizeRoles('ADMIN'), getAllBookings);
 
 export default router;

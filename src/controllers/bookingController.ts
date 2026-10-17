@@ -1,61 +1,287 @@
 import { Response } from 'express';
+import { Types } from 'mongoose';
 import Booking from '../models/Booking';
 import Car from '../models/Car';
 import { AuthRequest } from '../middlewares/authMiddleware';
 
+/**
+ * 1. Create a new booking (Protected - Logged-in users)
+ * POST /api/bookings
+ */
 export const createBooking = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { carId, startDate, endDate } = req.body;
     const userId = req.user?._id;
-
-    const car = await Car.findById(carId);
-    if (!car) {
-      res.status(404).json({ success: false, message: 'Car not found' });
+    if (!userId) {
+      res.status(401).json({
+        status: 'error',
+        success: false,
+        message: 'Authentication required. User not identified.',
+      });
       return;
     }
 
-    if (!car.isAvailable) {
-      res.status(400).json({ success: false, message: 'Car is not available for booking' });
+    // Support both 'car' and 'carId' in payload
+    const carId = req.body.car || req.body.carId;
+    const { startDate, endDate } = req.body;
+
+    if (!carId || !startDate || !endDate) {
+      res.status(400).json({
+        status: 'error',
+        success: false,
+        message: 'Validation failed: car, startDate, and endDate are all required.',
+        errors: {
+          ...(!carId && { car: 'Car ID is required' }),
+          ...(!startDate && { startDate: 'Rental start date is required' }),
+          ...(!endDate && { endDate: 'Rental end date is required' }),
+        },
+      });
+      return;
+    }
+
+    if (!Types.ObjectId.isValid(carId)) {
+      res.status(400).json({
+        status: 'error',
+        success: false,
+        message: `Invalid car ID format: "${carId}". Must be a valid 24-character hexadecimal ObjectId.`,
+      });
       return;
     }
 
     const start = new Date(startDate);
     const end = new Date(endDate);
-    const diffTime = Math.abs(end.getTime() - start.getTime());
-    const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      res.status(400).json({
+        status: 'error',
+        success: false,
+        message: 'Invalid date format. Please provide valid ISO date strings (e.g. YYYY-MM-DD).',
+      });
+      return;
+    }
+
+    if (end <= start) {
+      res.status(400).json({
+        status: 'error',
+        success: false,
+        message: 'End date must be strictly after start date.',
+      });
+      return;
+    }
+
+    // 1. Validate if the car exists
+    const car = await Car.findById(carId);
+    if (!car) {
+      res.status(404).json({
+        status: 'error',
+        success: false,
+        message: `Car with ID "${carId}" was not found.`,
+      });
+      return;
+    }
+
+    // 2. Validate if the car is available
+    if (!car.isAvailable) {
+      res.status(400).json({
+        status: 'error',
+        success: false,
+        message: 'This car is currently not available for rental booking.',
+      });
+      return;
+    }
+
+    // 3. Calculate totalDays and totalPrice automatically
+    const diffTime = end.getTime() - start.getTime();
+    const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     const totalPrice = totalDays * car.pricePerDay;
 
+    // 4. Create the booking record
     const booking = await Booking.create({
-      userId,
-      carId,
+      user: userId,
+      car: car._id,
       startDate: start,
       endDate: end,
       totalDays,
       totalPrice,
       status: 'PENDING',
+      paymentStatus: 'UNPAID',
     });
 
+    // Populate car details in response
+    const populatedBooking = await Booking.findById(booking._id).populate('car');
+
     res.status(201).json({
+      status: 'success',
       success: true,
-      data: booking,
+      message: 'Booking created successfully',
+      data: populatedBooking || booking,
     });
   } catch (error: any) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error('[createBooking Error]:', error);
+
+    if (error.name === 'ValidationError') {
+      const errorMap: Record<string, string> = {};
+      for (const key of Object.keys(error.errors)) {
+        errorMap[key] = error.errors[key].message;
+      }
+      res.status(400).json({
+        status: 'error',
+        success: false,
+        message: `Validation failed: ${Object.values(errorMap).join('; ')}`,
+        errors: errorMap,
+      });
+      return;
+    }
+
+    res.status(400).json({
+      status: 'error',
+      success: false,
+      message: error.message || 'Failed to create booking',
+    });
   }
 };
 
+/**
+ * 2. Get bookings for the currently authenticated user (Protected - Logged-in users)
+ * GET /api/bookings/my-bookings
+ */
 export const getMyBookings = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const bookings = await Booking.find({ userId: req.user?._id })
-      .populate('carId')
+    const userId = req.user?._id;
+    if (!userId) {
+      res.status(401).json({
+        status: 'error',
+        success: false,
+        message: 'Authentication required. User not identified.',
+      });
+      return;
+    }
+
+    const bookings = await Booking.find({ user: userId })
+      .populate('car')
       .sort({ createdAt: -1 });
 
     res.status(200).json({
+      status: 'success',
       success: true,
       count: bookings.length,
+      results: bookings.length,
       data: bookings,
     });
   } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('[getMyBookings Error]:', error);
+    res.status(500).json({
+      status: 'error',
+      success: false,
+      message: error.message || 'Failed to fetch your bookings',
+    });
+  }
+};
+
+/**
+ * 3. Cancel user's own booking (Protected - Logged-in users)
+ * PATCH /api/bookings/cancel/:id
+ */
+export const cancelBooking = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?._id;
+    const { id } = req.params;
+
+    if (!id || !Types.ObjectId.isValid(id as string)) {
+      res.status(400).json({
+        status: 'error',
+        success: false,
+        message: `Invalid booking ID format: "${id}". Must be a valid 24-character hexadecimal ObjectId.`,
+      });
+      return;
+    }
+
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      res.status(404).json({
+        status: 'error',
+        success: false,
+        message: `Booking with ID "${id}" was not found.`,
+      });
+      return;
+    }
+
+    // Verify ownership: Only the owner or an ADMIN can cancel this booking
+    const isOwner = userId && booking.user.toString() === userId.toString();
+    const isAdmin = req.user?.role === 'ADMIN';
+
+    if (!isOwner && !isAdmin) {
+      res.status(403).json({
+        status: 'error',
+        success: false,
+        message: 'Forbidden: You are not authorized to cancel this booking.',
+      });
+      return;
+    }
+
+    // Check existing status
+    if (booking.status === 'CANCELLED') {
+      res.status(400).json({
+        status: 'error',
+        success: false,
+        message: 'This booking has already been cancelled.',
+      });
+      return;
+    }
+
+    if (booking.status === 'COMPLETED') {
+      res.status(400).json({
+        status: 'error',
+        success: false,
+        message: 'Completed bookings cannot be cancelled.',
+      });
+      return;
+    }
+
+    booking.status = 'CANCELLED';
+    await booking.save();
+
+    const updatedBooking = await Booking.findById(id).populate('car');
+
+    res.status(200).json({
+      status: 'success',
+      success: true,
+      message: 'Booking cancelled successfully',
+      data: updatedBooking || booking,
+    });
+  } catch (error: any) {
+    console.error('[cancelBooking Error]:', error);
+    res.status(500).json({
+      status: 'error',
+      success: false,
+      message: error.message || 'Failed to cancel booking',
+    });
+  }
+};
+
+/**
+ * 4. Get all bookings in the system (Protected - Admin only)
+ * GET /api/bookings
+ */
+export const getAllBookings = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const bookings = await Booking.find()
+      .populate('user', '-password')
+      .populate('car')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      status: 'success',
+      success: true,
+      count: bookings.length,
+      results: bookings.length,
+      data: bookings,
+    });
+  } catch (error: any) {
+    console.error('[getAllBookings Error]:', error);
+    res.status(500).json({
+      status: 'error',
+      success: false,
+      message: error.message || 'Failed to fetch all bookings',
+    });
   }
 };

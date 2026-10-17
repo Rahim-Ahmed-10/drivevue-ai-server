@@ -1,28 +1,30 @@
 import { Schema, model, Types } from 'mongoose';
 
 export type BookingStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED';
+export type PaymentStatus = 'UNPAID' | 'PAID';
 
 export interface IBooking {
   _id?: Types.ObjectId;
-  userId: Types.ObjectId;
-  carId: Types.ObjectId;
+  user: Types.ObjectId;
+  car: Types.ObjectId;
   startDate: Date;
   endDate: Date;
   totalDays: number;
   totalPrice: number;
   status: BookingStatus;
+  paymentStatus: PaymentStatus;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 const bookingSchema = new Schema<IBooking>(
   {
-    userId: {
+    user: {
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'Booking must be linked to a user'],
     },
-    carId: {
+    car: {
       type: Schema.Types.ObjectId,
       ref: 'Car',
       required: [true, 'Booking must be linked to a car'],
@@ -47,8 +49,19 @@ const bookingSchema = new Schema<IBooking>(
     },
     status: {
       type: String,
-      enum: ['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED'],
+      enum: {
+        values: ['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED'],
+        message: '{VALUE} is not a valid booking status',
+      },
       default: 'PENDING',
+    },
+    paymentStatus: {
+      type: String,
+      enum: {
+        values: ['UNPAID', 'PAID'],
+        message: '{VALUE} is not a valid payment status',
+      },
+      default: 'UNPAID',
     },
   },
   {
