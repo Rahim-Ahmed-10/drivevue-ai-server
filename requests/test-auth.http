@@ -1,0 +1,21 @@
+### 1. Register Request Test
+POST http://localhost:5000/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Rahim Miah",
+  "email": "rahim@example.com",
+  "password": "123456password",
+  "role": "USER"
+}
+
+###
+
+### 2. Login Request Test
+POST http://localhost:5000/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "rahim@example.com",
+  "password": "123456password"
+}
