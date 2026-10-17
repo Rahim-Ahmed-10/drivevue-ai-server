@@ -1,0 +1,301 @@
+### ==============================================================================
+### DriveVue AI - Car Management Module API Tests
+### ==============================================================================
+### Use this file with the VS Code REST Client extension (humao.rest-client)
+### Server URL: http://localhost:5000
+### ==============================================================================
+
+@baseUrl = http://localhost:5000/api
+@contentType = application/json
+
+### ------------------------------------------------------------------------------
+### ADMIN JWT TOKEN CONFIGURATION
+### ------------------------------------------------------------------------------
+@adminToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjZhZDNkNTA2MzIzNjZkMGE3NTRlM2UzMSIsImVtYWlsIjoiYWRtaW5AZHJpdmV2dWUuY29tIiwicm9sZSI6IkFETUlOIiwiaWF0IjoxNzkyMjY4MTE2LCJleHAiOjE3OTI4NzI5MTZ9.ZqLYgpO09bNQb3Gi1AFJ24C7_lGYtTkb6Q2Sl_4FpaQ
+
+### ==============================================================================
+### STEP 1: Authentication Endpoints
+### ==============================================================================
+
+### 1.1 Login as ADMIN to get fresh token (Optional)
+# @name adminLogin
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "admin@drivevue.com",
+  "password": "adminpassword123"
+}
+
+###
+
+### 1.2 Register regular USER (For testing role protection)
+POST {{baseUrl}}/auth/register
+Content-Type: {{contentType}}
+
+{
+  "name": "Standard User",
+  "email": "user@example.com",
+  "password": "user123456",
+  "role": "USER"
+}
+
+###
+
+### 1.3 Login as regular USER (To obtain non-admin token)
+# @name userLogin
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "user@example.com",
+  "password": "user123456"
+}
+
+@userToken = {{userLogin.response.body.token}}
+
+### ==============================================================================
+### STEP 2: Car Management - Create Car (ADMIN Only, Protected Route)
+### ==============================================================================
+
+### 2.1 Add Electric Car (Tesla Model 3 Performance) - FULLY VALID PAYLOAD
+# @name createTesla
+POST {{baseUrl}}/cars
+Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
+
+{
+  "name": "Tesla Model 3 Performance",
+  "brand": "Tesla",
+  "model": "Model 3",
+  "year": 2024,
+  "pricePerDay": 120,
+  "category": "Electric",
+  "fuelType": "Electric",
+  "transmission": "Automatic",
+  "seats": 5,
+  "images": [
+    "https://images.unsplash.com/photo-1560958089-b8a1929cea89?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1536700503339-1e4b06520771?auto=format&fit=crop&w=1200&q=80"
+  ],
+  "isAvailable": true
+}
+
+### Capture created car ID for use in subsequent GET, PATCH, and DELETE requests
+@carId = {{createTesla.response.body.data._id}}
+
+###
+
+### 2.2 Add SUV (BMW X5 xDrive40i)
+POST {{baseUrl}}/cars
+Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
+
+{
+  "name": "BMW X5 xDrive40i",
+  "brand": "BMW",
+  "model": "X5",
+  "year": 2023,
+  "pricePerDay": 150,
+  "category": "SUV",
+  "fuelType": "Petrol",
+  "transmission": "Automatic",
+  "seats": 7,
+  "images": [
+    "https://images.unsplash.com/photo-1555215695-3004980ad54e?auto=format&fit=crop&w=1200&q=80"
+  ],
+  "isAvailable": true
+}
+
+###
+
+### 2.3 Add Luxury Sedan (Mercedes-Benz S 580)
+POST {{baseUrl}}/cars
+Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
+
+{
+  "name": "Mercedes-Benz S 580 4MATIC",
+  "brand": "Mercedes-Benz",
+  "model": "S-Class",
+  "year": 2024,
+  "pricePerDay": 250,
+  "category": "Luxury",
+  "fuelType": "Hybrid",
+  "transmission": "Automatic",
+  "seats": 5,
+  "images": [
+    "https://images.unsplash.com/photo-1618843479313-40f8afb4b4d8?auto=format&fit=crop&w=1200&q=80"
+  ],
+  "isAvailable": true
+}
+
+###
+
+### 2.4 Add Sports Car (Porsche 911 Carrera S)
+POST {{baseUrl}}/cars
+Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
+
+{
+  "name": "Porsche 911 Carrera S",
+  "brand": "Porsche",
+  "model": "911",
+  "year": 2023,
+  "pricePerDay": 320,
+  "category": "Sports",
+  "fuelType": "Petrol",
+  "transmission": "Manual",
+  "seats": 4,
+  "images": [
+    "https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=1200&q=80"
+  ],
+  "isAvailable": true
+}
+
+### ==============================================================================
+### STEP 3: Car Management - Read & Filter Cars (Public Routes)
+### ==============================================================================
+
+### 3.1 Get All Cars (No filters applied)
+GET {{baseUrl}}/cars
+
+###
+
+### 3.2 Filter Cars by Brand (e.g. Tesla)
+GET {{baseUrl}}/cars?brand=Tesla
+
+###
+
+### 3.3 Filter Cars by Category (Allowed: Sedan, SUV, Luxury, Electric, Sports)
+GET {{baseUrl}}/cars?category=SUV
+
+###
+
+### 3.4 Filter Cars by Fuel Type (Allowed: Petrol, Diesel, Hybrid, Electric)
+GET {{baseUrl}}/cars?fuelType=Electric
+
+###
+
+### 3.5 Search Cars by Keyword (Searches name, brand, or model)
+GET {{baseUrl}}/cars?search=Tesla
+
+###
+
+### 3.6 Combined Filters and Search Query
+GET {{baseUrl}}/cars?category=Electric&fuelType=Electric&search=Model
+
+###
+
+### 3.7 Filter Cars by Availability
+GET {{baseUrl}}/cars?isAvailable=true
+
+###
+
+### 3.8 Get Single Car Details by ID
+GET {{baseUrl}}/cars/{{carId}}
+
+### ==============================================================================
+### STEP 4: Car Management - Update Car (ADMIN Only)
+### ==============================================================================
+
+### 4.1 Update Car Price and Availability via PATCH
+PATCH {{baseUrl}}/cars/{{carId}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
+
+{
+  "pricePerDay": 135,
+  "isAvailable": false
+}
+
+###
+
+### 4.2 Update Car via PUT
+PUT {{baseUrl}}/cars/{{carId}}
+Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
+
+{
+  "pricePerDay": 140,
+  "isAvailable": true
+}
+
+### ==============================================================================
+### STEP 5: Car Management - Delete Car (ADMIN Only)
+### ==============================================================================
+
+### 5.1 Delete Car by ID
+DELETE {{baseUrl}}/cars/{{carId}}
+Authorization: Bearer {{adminToken}}
+
+###
+
+### 5.2 Verify Deletion (Should return 404 Not Found)
+GET {{baseUrl}}/cars/{{carId}}
+
+### ==============================================================================
+### STEP 6: Validation & Error Handling Tests (Debug Demonstrations)
+### ==============================================================================
+
+### 6.1 Test Missing Required Fields (Should return detailed 400 Bad Request)
+POST {{baseUrl}}/cars
+Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
+
+{
+  "name": "Incomplete Car"
+}
+
+###
+
+### 6.2 Test Invalid Field Types (Should return detailed 400 Bad Request)
+POST {{baseUrl}}/cars
+Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
+
+{
+  "name": "Invalid Type Car",
+  "brand": "Tesla",
+  "model": "Model Y",
+  "year": "not_a_number",
+  "pricePerDay": -50,
+  "category": "FlyingCar",
+  "fuelType": "Kerosene",
+  "seats": 0
+}
+
+###
+
+### 6.3 Test Unauthorized Request (Missing Token -> 401 Unauthorized)
+POST {{baseUrl}}/cars
+Content-Type: {{contentType}}
+
+{
+  "name": "Unauthenticated Car",
+  "brand": "Toyota",
+  "model": "Camry",
+  "year": 2023,
+  "pricePerDay": 70,
+  "category": "Sedan",
+  "fuelType": "Petrol",
+  "seats": 5
+}
+
+###
+
+### 6.4 Test Forbidden Request (Regular User Token -> 403 Forbidden)
+POST {{baseUrl}}/cars
+Content-Type: {{contentType}}
+Authorization: Bearer {{userToken}}
+
+{
+  "name": "Forbidden Car",
+  "brand": "Toyota",
+  "model": "Camry",
+  "year": 2023,
+  "pricePerDay": 70,
+  "category": "Sedan",
+  "fuelType": "Petrol",
+  "seats": 5
+}

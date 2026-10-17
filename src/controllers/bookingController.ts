@@ -14,7 +14,7 @@ export const createBooking = async (req: AuthRequest, res: Response): Promise<vo
       return;
     }
 
-    if (car.status !== 'AVAILABLE') {
+    if (!car.isAvailable) {
       res.status(400).json({ success: false, message: 'Car is not available for booking' });
       return;
     }

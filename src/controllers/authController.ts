@@ -3,7 +3,7 @@ import User, { IUser } from '../models/User';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_key';
+const getJwtSecret = (): string => process.env.JWT_SECRET || 'drivevue_super_secret_jwt_key_2026';
 
 // ১. Register Controller
 export const registerUser = async (req: Request, res: Response): Promise<void> => {
@@ -68,7 +68,7 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
     // Generate JWT Token
     const token = jwt.sign(
       { id: user._id, email: user.email, role: user.role },
-      JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: '7d' }
     );
 
