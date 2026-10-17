@@ -1,0 +1,85 @@
+### ==============================================================================
+### DriveVue AI - Gemini AI Smart Car Recommendation API Tests
+### ==============================================================================
+### Use this file with the VS Code REST Client extension (humao.rest-client)
+### Server URL: http://localhost:5000
+### Endpoint: POST http://localhost:5000/api/ai/recommend
+### ==============================================================================
+
+@baseUrl = http://localhost:5000/api
+@contentType = application/json
+
+### ==============================================================================
+### TEST 1: Family Road Trip Recommendation
+### ==============================================================================
+### Should recommend SUV or spacious vehicles with 5+ seats
+POST {{baseUrl}}/ai/recommend
+Content-Type: {{contentType}}
+
+{
+  "prompt": "I need a spacious and comfortable vehicle for a family vacation of 5 with plenty of luggage for a week-long road trip."
+}
+
+###
+
+### ==============================================================================
+### TEST 2: Eco-Friendly & Electric Car Recommendation
+### ==============================================================================
+### Should recommend Electric vehicles like Tesla Model 3
+POST {{baseUrl}}/ai/recommend
+Content-Type: {{contentType}}
+
+{
+  "prompt": "Looking for a futuristic, fast, and eco-friendly electric car with cutting-edge tech for city commuting."
+}
+
+###
+
+### ==============================================================================
+### TEST 3: Luxury Executive / Business Trip
+### ==============================================================================
+### Should recommend Luxury cars like Mercedes-Benz S-Class or BMW
+POST {{baseUrl}}/ai/recommend
+Content-Type: {{contentType}}
+
+{
+  "prompt": "I am hosting international business executives and need a premium, sophisticated luxury sedan that makes a great first impression."
+}
+
+###
+
+### ==============================================================================
+### TEST 4: High-Performance Sports Car
+### ==============================================================================
+### Should recommend high-performance sports cars like Porsche 911
+POST {{baseUrl}}/ai/recommend
+Content-Type: {{contentType}}
+
+{
+  "prompt": "I want an adrenaline-pumping, high-performance sports car with manual transmission for a weekend mountain drive."
+}
+
+###
+
+### ==============================================================================
+### TEST 5: Budget-Conscious / Daily Commuter
+### ==============================================================================
+### Should recommend affordable, economical vehicles
+POST {{baseUrl}}/ai/recommend
+Content-Type: {{contentType}}
+
+{
+  "prompt": "I am on a tight budget and need the most affordable, fuel-efficient car for daily errands."
+}
+
+###
+
+### ==============================================================================
+### TEST 6: Validation Error Test (Empty prompt) -> Expected: 400 Bad Request
+### ==============================================================================
+POST {{baseUrl}}/ai/recommend
+Content-Type: {{contentType}}
+
+{
+  "prompt": ""
+}

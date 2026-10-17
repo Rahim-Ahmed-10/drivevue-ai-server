@@ -3,6 +3,7 @@ import cors from 'cors';
 import authRoutes from './routes/authRoutes';
 import carRoutes from './routes/carRoutes';
 import bookingRoutes from './routes/bookingRoutes';
+import aiRoutes from './routes/aiRoutes';
 import { notFound, errorHandler } from './middlewares/errorMiddleware';
 
 const app: Application = express();
@@ -36,6 +37,7 @@ app.get('/health', (_req: Request, res: Response) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/cars', carRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/ai', aiRoutes);
 
 // Error Handling Middlewares
 app.use(notFound);
