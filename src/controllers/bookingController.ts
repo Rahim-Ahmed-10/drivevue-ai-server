@@ -285,3 +285,66 @@ export const getAllBookings = async (req: AuthRequest, res: Response): Promise<v
     });
   }
 };
+
+/**
+ * 5. Update booking status (Protected - Admin only via verifyAdmin)
+ * PATCH /api/bookings/:id/status
+ */
+export const updateBookingStatus = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!id || !Types.ObjectId.isValid(id as string)) {
+      res.status(400).json({
+        status: 'error',
+        success: false,
+        message: `Invalid booking ID format: "${id}".`,
+      });
+      return;
+    }
+
+    const validStatuses = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'];
+    const normalizedStatus = String(status || '').toUpperCase();
+    if (!validStatuses.includes(normalizedStatus)) {
+      res.status(400).json({
+        status: 'error',
+        success: false,
+        message: `Invalid status "${status}". Allowed values: ${validStatuses.join(', ')}.`,
+      });
+      return;
+    }
+
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      res.status(404).json({
+        status: 'error',
+        success: false,
+        message: `Booking with ID "${id}" was not found.`,
+      });
+      return;
+    }
+
+    booking.status = normalizedStatus as any;
+    await booking.save();
+
+    const updatedBooking = await Booking.findById(id)
+      .populate('user', '-password')
+      .populate('car');
+
+    res.status(200).json({
+      status: 'success',
+      success: true,
+      message: `Booking status updated to ${normalizedStatus} successfully`,
+      data: updatedBooking || booking,
+    });
+  } catch (error: any) {
+    console.error('[updateBookingStatus Error]:', error);
+    res.status(500).json({
+      status: 'error',
+      success: false,
+      message: error.message || 'Failed to update booking status',
+    });
+  }
+};
+

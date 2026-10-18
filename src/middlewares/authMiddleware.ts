@@ -66,5 +66,40 @@ export const authorize = (...roles: UserRole[]) => {
   };
 };
 
+/**
+ * Middleware to verify that the authenticated user possesses an ADMIN role.
+ * Explicitly checks req.user.role === 'admin' (case-insensitive).
+ */
+export const verifyAdmin = (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): void => {
+  if (!req.user) {
+    res.status(401).json({
+      status: 'error',
+      success: false,
+      message: 'Unauthorized: Authentication required before admin verification.',
+    });
+    return;
+  }
+
+  const userRole = (req.user.role as string) || '';
+  const isRoleAdmin =
+    userRole.toLowerCase() === 'admin' ||
+    userRole === 'ADMIN';
+
+  if (!isRoleAdmin) {
+    res.status(403).json({
+      status: 'error',
+      success: false,
+      message: "Forbidden: Access denied. User role is not 'admin'.",
+    });
+    return;
+  }
+
+  next();
+};
+
 export const verifyToken = protect;
 export const authorizeRoles = authorize;

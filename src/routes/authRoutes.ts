@@ -1,11 +1,15 @@
 import { Router, Request, Response } from 'express';
-import { registerUser, loginUser } from '../controllers/authController';
+import { registerUser, loginUser, seedAdmin } from '../controllers/authController';
 
 const router = Router();
 
 // Primary authentication routes (POST)
 router.post('/register', registerUser);
 router.post('/login', loginUser);
+
+// Temporary Admin Seed Route (supports both POST and GET for convenience)
+router.post('/seed-admin', seedAdmin);
+router.get('/seed-admin', seedAdmin);
 
 // Informative fallback for accidental GET requests (e.g. from a browser)
 router.get('/login', (_req: Request, res: Response) => {

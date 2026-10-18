@@ -6,7 +6,7 @@ import {
   updateCar,
   deleteCar,
 } from '../controllers/carController';
-import { verifyToken, authorizeRoles } from '../middlewares/authMiddleware';
+import { verifyToken, verifyAdmin } from '../middlewares/authMiddleware';
 
 const router = Router();
 
@@ -14,10 +14,10 @@ const router = Router();
 router.get('/', getAllCars);
 router.get('/:id', getCarById);
 
-// Protected routes: Only ADMIN users can create, update, and delete cars
-router.post('/', verifyToken, authorizeRoles('ADMIN'), createCar);
-router.patch('/:id', verifyToken, authorizeRoles('ADMIN'), updateCar);
-router.put('/:id', verifyToken, authorizeRoles('ADMIN'), updateCar);
-router.delete('/:id', verifyToken, authorizeRoles('ADMIN'), deleteCar);
+// Protected routes: Only ADMIN users can create, update, and delete cars (RBAC Protected)
+router.post('/', verifyToken, verifyAdmin, createCar);
+router.patch('/:id', verifyToken, verifyAdmin, updateCar);
+router.put('/:id', verifyToken, verifyAdmin, updateCar);
+router.delete('/:id', verifyToken, verifyAdmin, deleteCar);
 
 export default router;

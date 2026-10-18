@@ -1,7 +1,7 @@
 import { Schema, model, Types } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
-export type UserRole = 'ADMIN' | 'USER';
+export type UserRole = 'ADMIN' | 'USER' | 'admin' | 'user';
 
 export interface IUser {
   _id?: Types.ObjectId;
@@ -39,8 +39,8 @@ const userSchema = new Schema<IUser>(
     },
     role: {
       type: String,
-      enum: ['ADMIN', 'USER'],
-      default: 'USER',
+      enum: ['ADMIN', 'USER', 'admin', 'user'],
+      default: 'user',
     },
   },
   {
@@ -54,7 +54,12 @@ userSchema.pre('save', async function () {
     return;
   }
   // Check if password already looks like a bcrypt hash ($2a$, $2b$, $2y$)
-  if (/^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(this.password)) {
+  if (
+    typeof this.password === 'string' &&
+    (this.password.startsWith('$2a$') ||
+      this.password.startsWith('$2b$') ||
+      this.password.startsWith('$2y$'))
+  ) {
     return;
   }
   const salt = await bcrypt.genSalt(10);
