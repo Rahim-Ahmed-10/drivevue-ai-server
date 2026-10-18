@@ -94,7 +94,7 @@ export const createBooking = async (req: AuthRequest, res: Response): Promise<vo
     const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     const totalPrice = totalDays * car.pricePerDay;
 
-    // 4. Create the booking record
+    // 4. Create the booking record with direct CONFIRMED status
     const booking = await Booking.create({
       user: userId,
       car: car._id,
@@ -102,9 +102,12 @@ export const createBooking = async (req: AuthRequest, res: Response): Promise<vo
       endDate: end,
       totalDays,
       totalPrice,
-      status: 'PENDING',
-      paymentStatus: 'UNPAID',
+      status: 'CONFIRMED', // 🔴 সরাসরি কনফার্মড হয়ে যাবে
+      paymentStatus: 'PAID', // অথবা আপনার রিকোয়ারমেন্ট অনুযায়ী
     });
+
+    // 5. Mark the car as unavailable immediately to prevent double booking
+    await Car.findByIdAndUpdate(car._id, { isAvailable: false });
 
     // Populate car details in response
     const populatedBooking = await Booking.findById(booking._id).populate('car');
@@ -112,7 +115,7 @@ export const createBooking = async (req: AuthRequest, res: Response): Promise<vo
     res.status(201).json({
       status: 'success',
       success: true,
-      message: 'Booking created successfully',
+      message: 'Booking created and confirmed successfully',
       data: populatedBooking || booking,
     });
   } catch (error: any) {
@@ -195,7 +198,7 @@ export const cancelBooking = async (req: AuthRequest, res: Response): Promise<vo
       return;
     }
 
-    const booking = await Booking.findById(id);
+    const booking = await Booking.findById(id).populate('car');
     if (!booking) {
       res.status(404).json({
         status: 'error',
@@ -239,6 +242,11 @@ export const cancelBooking = async (req: AuthRequest, res: Response): Promise<vo
 
     booking.status = 'CANCELLED';
     await booking.save();
+
+    // Release car back to available pool
+    if (booking.car) {
+      await Car.findByIdAndUpdate((booking.car as any)._id, { isAvailable: true });
+    }
 
     const updatedBooking = await Booking.findById(id).populate('car');
 
@@ -287,7 +295,7 @@ export const getAllBookings = async (req: AuthRequest, res: Response): Promise<v
 };
 
 /**
- * 5. Update booking status (Protected - Admin only via verifyAdmin)
+ * 5. Update booking status & manage car availability (Protected - Admin only)
  * PATCH /api/bookings/:id/status
  */
 export const updateBookingStatus = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -315,7 +323,7 @@ export const updateBookingStatus = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    const booking = await Booking.findById(id);
+    const booking = await Booking.findById(id).populate('car');
     if (!booking) {
       res.status(404).json({
         status: 'error',
@@ -327,6 +335,16 @@ export const updateBookingStatus = async (req: AuthRequest, res: Response): Prom
 
     booking.status = normalizedStatus as any;
     await booking.save();
+
+    // Sync car availability with status update
+    if (booking.car) {
+      const carId = (booking.car as any)._id;
+      if (normalizedStatus === 'CONFIRMED' || normalizedStatus === 'COMPLETED') {
+        await Car.findByIdAndUpdate(carId, { isAvailable: false });
+      } else if (normalizedStatus === 'CANCELLED') {
+        await Car.findByIdAndUpdate(carId, { isAvailable: true });
+      }
+    }
 
     const updatedBooking = await Booking.findById(id)
       .populate('user', '-password')
@@ -347,4 +365,3 @@ export const updateBookingStatus = async (req: AuthRequest, res: Response): Prom
     });
   }
 };
-
