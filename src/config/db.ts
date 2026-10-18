@@ -3,11 +3,13 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/drivevue-ai';
+const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
 
 if (!MONGODB_URI) {
-  throw new Error('[Database Error] MONGODB_URI environment variable is missing.');
+  console.warn('[Database Warning] MONGODB_URI is not defined in environment variables. Falling back to local database.');
 }
+
+const TARGET_URI = MONGODB_URI || 'mongodb://localhost:27017/drivevue-ai';
 
 // Explicitly disable Mongoose buffering globally to prevent 10,000ms buffering timeouts
 mongoose.set('bufferCommands', false);
@@ -44,13 +46,12 @@ const connectDB = async (): Promise<typeof mongoose> => {
   // 2. Create connection promise if not exists
   if (!cached.promise) {
     const opts: mongoose.ConnectOptions = {
-      dbName: 'drivevue-ai',
       bufferCommands: false, // Disables Mongoose buffering to fix 10000ms timeout
       serverSelectionTimeoutMS: 5000, // 5 seconds timeout to fail fast
       autoIndex: process.env.NODE_ENV !== 'production',
     };
 
-    cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongooseInstance) => {
+    cached.promise = mongoose.connect(TARGET_URI, opts).then((mongooseInstance) => {
       console.log(`[Database] MongoDB Atlas Connected: ${mongooseInstance.connection.host} (Database: ${mongooseInstance.connection.name})`);
       return mongooseInstance;
     });
@@ -62,7 +63,7 @@ const connectDB = async (): Promise<typeof mongoose> => {
     cached.promise = null;
     cached.conn = null;
     console.error(`[Database Error] Failed to connect to MongoDB:`, error);
-    // Do NOT call process.exit(1) - allow serverless functions and Express error handlers to handle it
+    // Allow serverless functions and Express error handlers to gracefully handle failure
     throw error;
   }
 
