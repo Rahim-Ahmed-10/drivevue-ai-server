@@ -154,7 +154,8 @@ export const createCheckoutSession = async (req: AuthRequest, res: Response): Pr
       },
     });
   } catch (error: any) {
-    console.error('[createCheckoutSession Error]:', error);
+    console.error('Stripe Error Details:', error);
+    console.error('[createCheckoutSession Error]:', error.message || error);
     res.status(500).json({
       status: false,
       success: false,
