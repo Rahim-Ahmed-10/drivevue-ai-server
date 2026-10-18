@@ -96,8 +96,8 @@ export const createCheckoutSession = async (req: AuthRequest, res: Response): Pr
     const amountInCents = Math.round(booking.totalPrice * 100);
 
     const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
-    const success_url = `${clientUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}&booking_id=${booking._id}`;
-    const cancel_url = `${clientUrl}/payment/cancel?booking_id=${booking._id}`;
+    const success_url = `${clientUrl}/booking/success?session_id={CHECKOUT_SESSION_ID}&booking_id=${booking._id}`;
+    const cancel_url = `${clientUrl}/booking/cancel?booking_id=${booking._id}`;
 
     const line_items = [
       {
@@ -114,42 +114,7 @@ export const createCheckoutSession = async (req: AuthRequest, res: Response): Pr
       },
     ];
 
-    // Development mock mode fallback when a placeholder or mock secret key is configured
-    const isMockKey =
-      !process.env.STRIPE_SECRET_KEY ||
-      process.env.STRIPE_SECRET_KEY.includes('Mock') ||
-      process.env.STRIPE_SECRET_KEY.includes('placeholder') ||
-      process.env.STRIPE_SECRET_KEY.includes('your_stripe_secret_key');
-
-    if (isMockKey) {
-      const mockSessionId = `cs_test_mock_${Date.now()}`;
-      const mockSessionUrl = `${clientUrl}/payment/success?session_id=${mockSessionId}&booking_id=${booking._id}`;
-
-      booking.stripeSessionId = mockSessionId;
-      await booking.save();
-
-      console.log(`[Stripe Checkout (Mock)] Created mock session ${mockSessionId} for booking ${booking._id}`);
-
-      res.status(200).json({
-        status: true,
-        success: true,
-        message: 'Checkout session created successfully',
-        sessionId: mockSessionId,
-        sessionUrl: mockSessionUrl,
-        data: {
-          sessionId: mockSessionId,
-          sessionUrl: mockSessionUrl,
-          bookingId: booking._id,
-          totalPrice: booking.totalPrice,
-          totalDays,
-          dailyPrice,
-          carName,
-        },
-      });
-      return;
-    }
-
-    // 7. Create Stripe checkout session
+    // Create Stripe checkout session using actual Stripe SDK
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_email: req.user?.email || (booking.user as any)?.email,
@@ -164,7 +129,7 @@ export const createCheckoutSession = async (req: AuthRequest, res: Response): Pr
       cancel_url,
     });
 
-    // 8. Attach stripeSessionId to booking document
+    // Attach stripeSessionId to booking document
     booking.stripeSessionId = session.id;
     await booking.save();
 
@@ -176,9 +141,11 @@ export const createCheckoutSession = async (req: AuthRequest, res: Response): Pr
       message: 'Checkout session created successfully',
       sessionId: session.id,
       sessionUrl: session.url,
+      url: session.url,
       data: {
         sessionId: session.id,
         sessionUrl: session.url,
+        url: session.url,
         bookingId: booking._id,
         totalPrice: booking.totalPrice,
         totalDays,
@@ -217,18 +184,8 @@ export const verifyPayment = async (req: Request, res: Response): Promise<void> 
     let paymentConfirmed = false;
     let paymentIntentId: string | undefined;
 
-    // Handle mock sessions
-    if (sessionId && sessionId.startsWith('cs_test_mock_')) {
-      paymentConfirmed = true;
-      if (bookingId && Types.ObjectId.isValid(bookingId as string)) {
-        booking = await Booking.findById(bookingId);
-      } else {
-        booking = await Booking.findOne({ stripeSessionId: sessionId });
-      }
-    }
-
-    // A. Verify via Stripe Checkout Session ID
-    if (!paymentConfirmed && sessionId) {
+    // Verify via Stripe Checkout Session ID
+    if (sessionId) {
       try {
         const session = await stripe.checkout.sessions.retrieve(sessionId);
 
