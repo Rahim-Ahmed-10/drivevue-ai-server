@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import User, { IUser, UserRole } from '../models/User';
+import connectDB from '../config/db'; // Ensure DB connection for serverless
 
 export interface AuthRequest extends Request {
   user?: IUser;
@@ -24,32 +25,42 @@ export const protect = async (
   ) {
     try {
       token = req.headers.authorization.split(' ')[1];
-      const primarySecret = process.env.JWT_SECRET || 'drivevue_super_secret_jwt_key_2026';
-      
-      let decoded: JwtPayload;
-      try {
-        decoded = jwt.verify(token, primarySecret) as JwtPayload;
-      } catch {
-        try {
-          decoded = jwt.verify(token, 'super_secret_key') as JwtPayload;
-        } catch {
-          decoded = jwt.verify(token, 'default_secret') as JwtPayload;
-        }
-      }
 
+      const jwtSecret = process.env.JWT_SECRET || 'drivevue_super_secret_jwt_key_2026';
+
+      // 1. Verify JWT Token using strict secret
+      const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+
+      // 2. Ensure DB connection for Vercel Serverless Function
+      await connectDB();
+
+      // 3. Find User in Database
       const user = await User.findById(decoded.id).select('-password');
+
       if (!user) {
-        res.status(401).json({ success: false, message: 'User not found' });
+        res.status(401).json({
+          success: false,
+          code: 'USER_NOT_FOUND',
+          message: 'User account no longer exists. Please register or sign in again.',
+        });
         return;
       }
 
       req.user = user;
       next();
-    } catch {
-      res.status(401).json({ success: false, message: 'Not authorized, token failed' });
+    } catch (error) {
+      res.status(401).json({
+        success: false,
+        code: 'INVALID_TOKEN',
+        message: 'Not authorized, token verification failed.',
+      });
     }
   } else {
-    res.status(401).json({ success: false, message: 'Not authorized, no token provided' });
+    res.status(401).json({
+      success: false,
+      code: 'NO_TOKEN',
+      message: 'Not authorized, no token provided.',
+    });
   }
 };
 
@@ -68,7 +79,6 @@ export const authorize = (...roles: UserRole[]) => {
 
 /**
  * Middleware to verify that the authenticated user possesses an ADMIN role.
- * Explicitly checks req.user.role === 'admin' (case-insensitive).
  */
 export const verifyAdmin = (
   req: AuthRequest,

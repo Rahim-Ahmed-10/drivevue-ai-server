@@ -2,60 +2,188 @@ import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import stripe from '../config/stripe';
 import Booking from '../models/Booking';
+import Car from '../models/Car';
 import { AuthRequest } from '../middlewares/authMiddleware';
 
 /**
- * 1. Create a Stripe Checkout Session for a Booking
+ * 1. Create a Stripe Checkout Session for a Booking or Direct Car Reservation
  * POST /api/payments/create-checkout-session (Protected)
  */
 export const createCheckoutSession = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { bookingId } = req.body;
     const currentUserId = req.user?._id;
 
-    // 1. Validation: bookingId must exist and be a valid MongoDB ObjectId
-    if (!bookingId || !Types.ObjectId.isValid(bookingId as string)) {
-      res.status(400).json({
+    // 1. Verify User Authentication
+    if (!currentUserId) {
+      res.status(401).json({
         status: false,
         success: false,
-        message: 'Please provide a valid MongoDB bookingId in the request body',
+        message: 'Authentication required. Please sign in to reserve a vehicle.',
       });
       return;
     }
 
-    // 2. Fetch booking and populated car / carId details
-    let booking = await Booking.findById(bookingId).populate('car').populate('user');
+    const { bookingId, carId, car, startDate, endDate, totalAmount } = req.body;
+    let booking: any = null;
 
-    // 3. Fallback: If no pending booking exists for the given bookingId,
-    // check if there's any active pending booking for the authenticated user (req.user._id)
-    const isPayable = booking && booking.paymentStatus === 'UNPAID' && booking.status !== 'CANCELLED';
+    // SCENARIO A: Direct vehicle checkout (carId / car + startDate + endDate)
+    const targetCarId = carId || car || (typeof req.body.car === 'object' ? req.body.car?._id : undefined);
 
-    if (!isPayable && currentUserId) {
-      const fallbackBooking = await Booking.findOne({
+    if (targetCarId && !bookingId) {
+      // Validate Car ID format
+      if (!Types.ObjectId.isValid(String(targetCarId))) {
+        res.status(400).json({
+          status: false,
+          success: false,
+          message: `Invalid vehicle ID format: "${targetCarId}". Must be a valid 24-character hexadecimal ObjectId.`,
+        });
+        return;
+      }
+
+      // Validate Dates
+      if (!startDate || !endDate) {
+        res.status(400).json({
+          status: false,
+          success: false,
+          message: 'Both rental startDate and endDate are required to reserve this vehicle.',
+        });
+        return;
+      }
+
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        res.status(400).json({
+          status: false,
+          success: false,
+          message: 'Invalid date format. Please provide valid ISO date strings (e.g. YYYY-MM-DD).',
+        });
+        return;
+      }
+
+      if (end <= start) {
+        res.status(400).json({
+          status: false,
+          success: false,
+          message: 'Rental return date must be strictly after the pick-up date.',
+        });
+        return;
+      }
+
+      // Fetch Car from database
+      const carDoc = await Car.findById(targetCarId);
+      if (!carDoc) {
+        res.status(404).json({
+          status: false,
+          success: false,
+          message: `Vehicle with ID "${targetCarId}" was not found in the fleet database.`,
+        });
+        return;
+      }
+
+      // Calculate Days & Total Price
+      const diffTime = Math.abs(end.getTime() - start.getTime());
+      const totalDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+      const subtotal = totalDays * carDoc.pricePerDay;
+      const tax = Math.round(subtotal * 0.08); // 8% fee & tax
+      const calculatedTotal = subtotal + tax;
+      const finalPrice = typeof totalAmount === 'number' && totalAmount > 0 ? totalAmount : calculatedTotal;
+
+      // Check if user already has an active UNPAID booking for this vehicle and date range
+      const existingBooking = await Booking.findOne({
         user: currentUserId,
+        car: carDoc._id,
         paymentStatus: 'UNPAID',
         status: { $ne: 'CANCELLED' },
+        startDate: start,
+        endDate: end,
       })
-        .sort({ createdAt: -1 })
         .populate('car')
         .populate('user');
 
-      if (fallbackBooking) {
-        console.log(`[Stripe Checkout] Fallback to user's active pending booking: ${fallbackBooking._id}`);
-        booking = fallbackBooking;
+      if (existingBooking) {
+        booking = existingBooking;
+        if (booking.totalPrice !== finalPrice) {
+          booking.totalPrice = finalPrice;
+          booking.totalDays = totalDays;
+          await booking.save();
+        }
+      } else {
+        // Create new PENDING reservation
+        const newBooking = await Booking.create({
+          user: currentUserId,
+          car: carDoc._id,
+          startDate: start,
+          endDate: end,
+          totalDays,
+          totalPrice: finalPrice,
+          status: 'PENDING',
+          paymentStatus: 'UNPAID',
+        });
+
+        booking = await Booking.findById(newBooking._id).populate('car').populate('user');
       }
+    }
+    // SCENARIO B: Pre-created bookingId provided
+    else if (bookingId) {
+      if (!Types.ObjectId.isValid(String(bookingId))) {
+        res.status(400).json({
+          status: false,
+          success: false,
+          message: `Invalid booking ID format: "${bookingId}". Must be a valid 24-character hexadecimal ObjectId.`,
+        });
+        return;
+      }
+
+      booking = await Booking.findById(bookingId).populate('car').populate('user');
+
+      // Fallback: Check if there's any active pending booking for the user
+      const isPayable = booking && booking.paymentStatus === 'UNPAID' && booking.status !== 'CANCELLED';
+
+      if (!isPayable && currentUserId) {
+        const fallbackBooking = await Booking.findOne({
+          user: currentUserId,
+          paymentStatus: 'UNPAID',
+          status: { $ne: 'CANCELLED' },
+        })
+          .sort({ createdAt: -1 })
+          .populate('car')
+          .populate('user');
+
+        if (fallbackBooking) {
+          console.log(`[Stripe Checkout] Fallback to user's active pending booking: ${fallbackBooking._id}`);
+          booking = fallbackBooking;
+        }
+      }
+
+      if (!booking) {
+        res.status(404).json({
+          status: false,
+          success: false,
+          message: `Booking with ID "${bookingId}" was not found.`,
+        });
+        return;
+      }
+    } else {
+      res.status(400).json({
+        status: false,
+        success: false,
+        message: 'Please provide either vehicle details (carId, startDate, endDate) or a valid bookingId.',
+      });
+      return;
     }
 
     if (!booking) {
       res.status(404).json({
         status: false,
         success: false,
-        message: `Booking with ID "${bookingId}" was not found and no active pending bookings exist for this user.`,
+        message: 'Reservation could not be resolved.',
       });
       return;
     }
 
-    // 4. Authorization check: User must own the booking or be an ADMIN
+    // Authorization check: User must own the booking or be an ADMIN
     const bookingUserId = (booking.user as any)?._id || booking.user;
     const isOwner = currentUserId && bookingUserId && bookingUserId.toString() === currentUserId.toString();
     const isAdmin = req.user?.role === 'ADMIN';
@@ -64,17 +192,17 @@ export const createCheckoutSession = async (req: AuthRequest, res: Response): Pr
       res.status(403).json({
         status: false,
         success: false,
-        message: 'Forbidden: You are not authorized to create a payment session for this booking.',
+        message: 'Forbidden: You are not authorized to create a payment session for this reservation.',
       });
       return;
     }
 
-    // 5. Check if booking is already paid or cancelled
+    // Check if booking is already paid or cancelled
     if (booking.paymentStatus === 'PAID') {
       res.status(400).json({
         status: false,
         success: false,
-        message: 'This booking has already been paid for.',
+        message: 'This reservation has already been paid for.',
       });
       return;
     }
@@ -83,21 +211,21 @@ export const createCheckoutSession = async (req: AuthRequest, res: Response): Pr
       res.status(400).json({
         status: false,
         success: false,
-        message: 'Cannot process payment for a cancelled booking.',
+        message: 'Cannot process payment for a cancelled reservation.',
       });
       return;
     }
 
-    // 6. Fetch populated carId / car details and construct line items
-    const car: any = booking.car || (booking as any).carId;
-    const carName = car ? `${car.brand} ${car.name}` : 'DriveVue Rental Vehicle';
+    // Fetch populated car details and construct line items
+    const carDetails: any = booking.car || (booking as any).carId;
+    const carName = carDetails ? `${carDetails.brand} ${carDetails.name}` : 'DriveVue Rental Vehicle';
     const totalDays = booking.totalDays || 1;
-    const dailyPrice = car?.pricePerDay || Math.round(booking.totalPrice / totalDays);
+    const dailyPrice = carDetails?.pricePerDay || Math.round(booking.totalPrice / totalDays);
     const amountInCents = Math.round(booking.totalPrice * 100);
 
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+    const clientUrl = (process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/+$/, '');
     const success_url = `${clientUrl}/booking/success?session_id={CHECKOUT_SESSION_ID}&booking_id=${booking._id}`;
-    const cancel_url = `${clientUrl}/booking/cancel?booking_id=${booking._id}`;
+    const cancel_url = `${clientUrl}/payment/cancel?booking_id=${booking._id}&car_id=${carDetails?._id || ''}`;
 
     const line_items = [
       {
@@ -105,8 +233,8 @@ export const createCheckoutSession = async (req: AuthRequest, res: Response): Pr
           currency: 'usd',
           product_data: {
             name: carName,
-            description: `DriveVue AI Rental: ${totalDays} day(s) at $${dailyPrice}/day`,
-            images: car?.images && car.images.length > 0 ? [car.images[0]] : [],
+            description: `DriveVue AI Rental: ${totalDays} day(s) at $${dailyPrice}/day (Includes protection & 24/7 concierge)`,
+            images: carDetails?.images && carDetails.images.length > 0 ? [carDetails.images[0]] : [],
           },
           unit_amount: amountInCents,
         },
@@ -122,7 +250,7 @@ export const createCheckoutSession = async (req: AuthRequest, res: Response): Pr
       metadata: {
         bookingId: booking._id?.toString() || '',
         userId: currentUserId?.toString() || '',
-        carId: car?._id?.toString() || '',
+        carId: carDetails?._id?.toString() || '',
       },
       line_items,
       success_url,
