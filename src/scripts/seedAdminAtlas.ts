@@ -17,7 +17,7 @@ async function seedAdminUser() {
     console.log(`[Atlas Verification] Successfully connected to host: ${conn.connection.host}`);
     console.log(`[Atlas Verification] Database Name: ${conn.connection.name}`);
 
-    const adminEmail = 'admin@drivevue.com';
+    const adminEmail = 'admin2@drivevue.com';
     const targetPassword = 'Rahim321';
     const targetRole = 'admin';
 
