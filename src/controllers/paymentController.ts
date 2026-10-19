@@ -365,6 +365,12 @@ export const verifyPayment = async (req: Request, res: Response): Promise<void> 
       if (sessionId) booking.stripeSessionId = sessionId;
       if (paymentIntentId) booking.stripePaymentIntentId = paymentIntentId;
       await booking.save();
+
+      // Lock vehicle availability to prevent double booking
+      if (booking.car) {
+        const carIdToLock = (booking.car as any)?._id || booking.car;
+        await Car.findByIdAndUpdate(carIdToLock, { isAvailable: false });
+      }
     }
 
     const updatedBooking = await Booking.findById(booking._id).populate('car').populate('user', '-password');
@@ -422,6 +428,12 @@ export const stripeWebhook = async (req: Request, res: Response): Promise<void> 
             booking.stripePaymentIntentId = String(session.payment_intent);
           }
           await booking.save();
+
+          if (booking.car) {
+            const carIdToLock = (booking.car as any)?._id || booking.car;
+            await Car.findByIdAndUpdate(carIdToLock, { isAvailable: false });
+          }
+
           console.log(`[Stripe Webhook] Booking ${bookingId} marked as CONFIRMED and PAID.`);
         }
       }
