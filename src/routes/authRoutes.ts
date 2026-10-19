@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { registerUser, loginUser, seedAdmin } from '../controllers/authController';
+import { registerUser, loginUser, seedDemoUsers, seedAdmin } from '../controllers/authController';
 
 const router = Router();
 
@@ -7,7 +7,11 @@ const router = Router();
 router.post('/register', registerUser);
 router.post('/login', loginUser);
 
-// Temporary Admin Seed Route (supports both POST and GET for convenience)
+// Demo / Seed Users Routes (supports both POST and GET for browser and API convenience)
+router.post('/seed-users', seedDemoUsers);
+router.get('/seed-users', seedDemoUsers);
+router.post('/seed-demo', seedDemoUsers);
+router.get('/seed-demo', seedDemoUsers);
 router.post('/seed-admin', seedAdmin);
 router.get('/seed-admin', seedAdmin);
 
